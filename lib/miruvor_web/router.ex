@@ -8,10 +8,10 @@ defmodule MiruvorWeb.Router do
   scope "/", MiruvorWeb do
     pipe_through :api
     get "/", Controller, :index
-    get "/get", Controller, :get
-    post "/post", Controller, :post
-    put "/put", Controller, :put
-    delete "/delete", Controller, :delete
+    get "/read/:key", Controller, :read
+    post "/write/:key/:value", Controller, :write
+    put "/update/:key/:value", Controller, :update
+    delete "/delete/:key", Controller, :delete
 
 
   end

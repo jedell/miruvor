@@ -272,16 +272,16 @@ defmodule Miruvor.Raft do
     {:ok, state}
   end
 
-  def follower({:call, from}, {:get, {item} = _msg}, state) do
+  def follower({:call, from}, {:read, item}, state) do
     Logger.info("Follower #{inspect(Node.self())} received get: #{inspect(item)}")
-    resp = RaftUtils.send_to_reply(state.current_leader, :get, {from, item})
-    {:keep_state, state}
+    resp = RaftUtils.redirect_to(state.current_leader, :read, item)
+    {:keep_state_and_data, [{:reply, from, resp}]}
   end
 
-  def follower({:call, from}, {:write, {key, item} = _msg}, state) do
+  def follower({:call, from}, {:write, {key, item}}, state) do
     Logger.info("Follower #{inspect(Node.self())} received put: #{inspect(item)}")
-    resp = RaftUtils.send_to(state.current_leader, :write, {from, key, item})
-    {:keep_state, state}
+    resp = RaftUtils.redirect_to(state.current_leader, :write, {key, item})
+    {:keep_state_and_data, [{:reply, from, resp}]}
   end
 
   ## LEADER STATES

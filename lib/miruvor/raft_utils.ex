@@ -381,6 +381,12 @@ defmodule Miruvor.RaftUtils do
 
   def send_to_reply(node, message, payload) do
     Logger.info("Sending #{message} to #{node}")
-    resp = :rpc.call(node, Miruvor.Raft, :send, [{message, payload}])
+    GenStateMachine.call({Miruvor.Raft, node}, {Node.self(), message, payload})
   end
+
+  def redirect_to(leader, message, payload) do
+    Logger.info("Redirecting #{message} to leader #{inspect(leader)}")
+    GenStateMachine.call({Miruvor.Raft, leader}, {message, payload})
+  end
+
 end
