@@ -18,16 +18,19 @@ defmodule MiruvorWeb.Controller do
     # Logger.info("State: #{inspect(state)}")
     # resp = :rpc.multicall(Node.list(), Miruvor.Raft, :send, [%{sender: Node.self(), operation: :get}])
     # do raft, send_resp in raft, probably send a log entry here
-    resp = GenServer.call(Miruvor.Raft, {:get, {conn, "test"}})
+    # resp = GenStateMachine.call(Miruvor.Raft, {:get, {conn, "test"}})
+    # make call to leader only with rpc despite being a follower
+
+    resp = Miruvor.Raft.read("test")
 
     # should return correct value
     send_resp(conn, 200, inspect(resp))
   end
 
   def post(conn, _params) do
-    resp = GenServer.call(Miruvor.Raft, {:post, {conn, "test", "nice!"}})
+    resp = Miruvor.Raft.write("test", "nice!")
 
-    # send_resp(conn, 200, inspect(resp))
+    send_resp(conn, 200, inspect(resp))
   end
 
   def put(conn, _params) do

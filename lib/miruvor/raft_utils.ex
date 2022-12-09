@@ -95,7 +95,15 @@ defmodule Miruvor.RaftUtils do
     if raft.election_timer != nil do
       Process.cancel_timer(raft.election_timer)
     end
-    timer = Process.send_after(self(), :election_timeout, :rand.uniform(raft.max_election_timeout - raft.min_election_timeout) + raft.min_election_timeout)
+
+    timer =
+      Process.send_after(
+        self(),
+        :election_timeout,
+        :rand.uniform(raft.max_election_timeout - raft.min_election_timeout) +
+          raft.min_election_timeout
+      )
+
     %Miruvor.Raft{raft | election_timer: timer}
   end
 
@@ -103,6 +111,7 @@ defmodule Miruvor.RaftUtils do
     if raft.heartbeat_timer != nil do
       Process.cancel_timer(raft.heartbeat_timer)
     end
+
     timer = Process.send_after(self(), :heartbeat, raft.heartbeat_timeout)
     %Miruvor.Raft{raft | heartbeat_timer: timer}
   end
@@ -219,7 +228,7 @@ defmodule Miruvor.RaftUtils do
 
   def has_majority?(raft) do
     raft = get_view(raft)
-    majority = (length(raft.view)) / 2
+    majority = length(raft.view) / 2
     Enum.count(raft.votes) >= majority
   end
 
@@ -266,7 +275,6 @@ defmodule Miruvor.RaftUtils do
     }
 
     {raft, response}
-
   end
 
   def set_view(raft, conflict) do
@@ -312,6 +320,7 @@ defmodule Miruvor.RaftUtils do
     %Miruvor.Raft{
       raft
       | is_leader: false,
+        current_leader: nil,
         voted_for: nil,
         votes: [],
         state: :follower,
@@ -327,7 +336,7 @@ defmodule Miruvor.RaftUtils do
         state: :candidate,
         current_leader: nil,
         voted_for: Node.self(),
-        votes: [Node.self()],
+        votes: [Node.self()]
     }
   end
 
@@ -348,26 +357,30 @@ defmodule Miruvor.RaftUtils do
   Broadcast a message to all nodes in the view except self.
   """
   def broadcast(raft, message, payload) do
-    Logger.info(
-      "Broadcasting #{message} to #{inspect(raft.view)}"
-    )
+    Logger.info("Broadcasting #{message} to #{inspect(raft.view)}")
 
     raft = get_view(raft)
     # :rpc.multicall(raft.view, Miruvor.Raft, :send, [{Node.self(), message, payload}])
     # for each node in view, send message
     Enum.each(raft.view, fn node ->
       if node != Node.self() do
-        :rpc.cast(node, Miruvor.Raft, :send, [{Node.self(), message, payload}])
+        resp = GenStateMachine.cast({Miruvor.Raft, node}, {Node.self(), message, payload})
+        # :rpc.cast(node, Miruvor.Raft, :send, [{Node.self(), message, payload}])
       end
     end)
+
     # Logger.info("Broadcast response: #{inspect(resp)}")
-    :ok
+    raft
   end
 
   def send_to(node, message, payload) do
     Logger.info("Sending #{message} to #{node}")
-    :rpc.cast(node, Miruvor.Raft, :send, [{Node.self(), message, payload}])
+    GenStateMachine.cast({Miruvor.Raft, node}, {Node.self(), message, payload})
+    # :rpc.cast(node, Miruvor.Raft, :send, [{Node.self(), message, payload}])
+  end
 
-    :ok
+  def send_to_reply(node, message, payload) do
+    Logger.info("Sending #{message} to #{node}")
+    resp = :rpc.call(node, Miruvor.Raft, :send, [{message, payload}])
   end
 end
