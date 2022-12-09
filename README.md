@@ -13,7 +13,7 @@ This repository contains an implementation of a distributed key-value store in E
 
 - Shards
 
-##Design Choices
+## Design Choices
 
 In designing this distributed key-value store, several important choices were made with the goal of achieving high performance and reliability.
 
