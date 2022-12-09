@@ -23,6 +23,19 @@ defmodule Miruvor.Application do
     Logger.info("Node: #{Node.self()}")
     Logger.info("Leader: #{leader}")
 
+    # create list of init nodes including self and sort
+    nodes = Application.get_env(:miruvor, :hosts, [])
+
+    # sort initial nodes
+    nodes = Enum.sort(nodes)
+
+    Logger.notice("Nodes: #{inspect(nodes)}")
+
+    # create shard table
+    shards = Miruvor.Shard.new(nodes)
+
+    Logger.notice("Shards: #{inspect(shards)}")
+
     children = [
       # Start libcluster
       {Cluster.Supervisor, [topologies, [name: MyApp.ClusterSupervisor]]},
@@ -35,7 +48,7 @@ defmodule Miruvor.Application do
       # Start a worker by calling: Miruvor.Worker.start_link(arg)
       # {Miruvor.Worker, arg}
       # Start RockDB Storage
-      {Miruvor.Storage, [{:node, Node.self()}]},
+      {Miruvor.Storage, [{:node, Node.self(), :shards, shards}]},
       # # Start Raft
       {Miruvor.Raft, [{:node, Node.self(), :is_leader, leader}]}
       # {Miruvor.Servertest, [{:node, Node.self(), :is_leader, leader}]}

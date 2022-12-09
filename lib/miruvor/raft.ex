@@ -71,6 +71,18 @@ defmodule Miruvor.Raft do
     GenStateMachine.call(__MODULE__, :state)
   end
 
+  def is_leader?() do
+    GenStateMachine.call(__MODULE__, :is_leader)
+  end
+
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_call(:is_leader, _from, state) do
+    {:reply, state.is_leader, state}
+  end
+
   # FOLLOWER HANDLERS
 
   def follower(:info, msg, state) do

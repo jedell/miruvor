@@ -22,6 +22,8 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :miruvor, :hosts, [:"a@127.0.0.1", :"b@127.0.0.1", :"c@127.0.0.1", :"d@127.0.0.1"]
+
 config :libcluster,
   topologies: [
     epmd: [

@@ -21,7 +21,7 @@ defmodule Miruvor.MixProject do
     [
       mod: {Miruvor.Application, []},
       applications: [:gen_state_machine, :phoenix, :phoenix_pubsub, :cowboy],
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :crypto]
     ]
   end
 
