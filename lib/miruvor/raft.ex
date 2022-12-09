@@ -1,9 +1,12 @@
 defmodule Miruvor.Raft do
   @moduledoc """
   The Consensus #{inspect(Node.self())} for Miruvor.
+  Related work:
+  - https://raft.github.io/raft.pdf
+  - http://staff.um.edu.mt/afra1/papers/Erlang21.pdf
+  - https://github.com/brianbinbin/Raf/blob/master/lib/raf/server.ex
   """
-
-  use GenServer
+  use GenStateMachine, callback_mode: :state_functions
   require Logger
   alias Miruvor.Raft
   alias Miruvor.LogEntry
@@ -32,57 +35,45 @@ defmodule Miruvor.Raft do
     # state: :follower
   )
 
-  @spec start_link(any()) :: GenServer.on_start()
+  def write(key, value) do
+    Logger.info("Writing #{key} = #{value}")
+    GenStateMachine.call(__MODULE__, {:write, {key, value}})
+  end
+
+  def read(key) do
+    Logger.info("Reading #{key}")
+    GenStateMachine.call(__MODULE__, {:read, key})
+  end
+
+  @spec start_link(any()) :: GenStateMachine.on_start()
   def start_link(opt) do
     Logger.info("Starting Raft")
     [{:node, node, :is_leader, leader}] = opt
-    GenServer.start_link(__MODULE__, [node: node, is_leader: leader], name: __MODULE__)
+    GenStateMachine.start_link(__MODULE__, [node: node, is_leader: leader], name: __MODULE__)
   end
 
-  @spec init(any) :: {:ok, any}
   def init([node: _node, is_leader: true] = opt) do
     Logger.info("Initializing Raft: #{inspect(opt)}")
     Logger.info("Leader: true")
     state = RaftUtils.make_leader(RaftUtils.new_config(Node.list(), nil, 2000, 3000, 1000))
-    {:ok, become_leader(state)}
+    {:ok, :leader, become_leader(state)}
   end
 
   def init([node: _node, is_leader: false] = opt) do
     Logger.info("Initializing Raft: #{inspect(opt)}")
     Logger.info("Leader: false")
     state = RaftUtils.make_follower(RaftUtils.new_config(Node.list(), nil, 2000, 3000, 1000))
-    {:ok, become_follower(state)}
-  end
-
-  def send(msg) do
-    GenServer.call(__MODULE__, msg)
-  end
-
-  def append_entries(msg) do
-    GenServer.call(__MODULE__, {:append_entries, msg})
+    {:ok, :follower, become_follower(state)}
   end
 
   # get raft state
   def state() do
-    GenServer.call(__MODULE__, :state)
-  end
-
-  def handle_call(:state, _from, state) do
-    {:reply, state, state}
+    GenStateMachine.call(__MODULE__, :state)
   end
 
   # FOLLOWER HANDLERS
 
-  @spec handle_call(any, any, any) :: {:reply, any, any}
-  def handle_call(msg, _from, %{state: :follower} = state) do
-    Logger.info("Follower #{inspect(Node.self())} received call")
-    # Handle msg, return reply and new state
-    {:ok, new_state} = follower(msg, state)
-    # {:reply, item, new_state}
-    {:reply, :ok, new_state}
-  end
-
-  def handle_info(msg, %{state: :follower} = state) do
+  def follower(:info, msg, state) do
     case msg do
       :election_timeout ->
         Logger.info("Follower #{inspect(Node.self())} election timeout")
@@ -102,24 +93,16 @@ defmodule Miruvor.Raft do
           )
         )
 
-        {:noreply, state}
+        {:next_state, :candidate, state}
 
       true ->
-        {:noreply, state}
+        {:keep_state, state}
     end
   end
 
   # LEADER HANDLERS
 
-  def handle_call(msg, _from, %{state: :leader} = state) do
-    Logger.info("Leader #{inspect(Node.self())} received call")
-    # Handle msg, return reply and new state
-    {:ok, new_state} = leader(msg, state)
-    # {:reply, item, new_state}
-    {:reply, :ok, new_state}
-  end
-
-  def handle_info(msg, %{state: :leader} = state) do
+  def leader(:info, msg, state) do
     case msg do
       :heartbeat ->
         Logger.info("Leader #{inspect(Node.self())} heartbeat timeout")
@@ -127,42 +110,35 @@ defmodule Miruvor.Raft do
         state = RaftUtils.reset_heartbeat_timer(state)
 
         # Empty append_entries_req to followers (heartbeat)
-        RaftUtils.broadcast(
-          state,
-          :append_entries_req,
-          Miruvor.AppendEntryRequest.new(
-            state.current_term,
-            Node.self(),
-            RaftUtils.get_last_log_index(state),
-            RaftUtils.get_last_log_term(state),
-            [],
-            state.commit_index
+        state =
+          RaftUtils.broadcast(
+            state,
+            :append_entries_req,
+            Miruvor.AppendEntryRequest.new(
+              state.current_term,
+              Node.self(),
+              RaftUtils.get_last_log_index(state),
+              RaftUtils.get_last_log_term(state),
+              [],
+              state.commit_index
+            )
           )
-        )
 
-        {:noreply, state}
+        {:keep_state, state}
 
       _ ->
-        {:noreply, state}
+        {:keep_state, state}
     end
   end
 
   # CANDIDATE HANDLERS
 
-  def handle_call(msg, _from, %{state: :candidate} = state) do
-    Logger.info("Candidate #{inspect(Node.self())} received call")
-    # Handle msg, return reply and new state
-    {:ok, new_state} = candidate(msg, state)
-    # {:reply, item, new_state}
-    {:reply, :ok, new_state}
-  end
-
-  def handle_info(:election_timeout, %{state: :candidate} = state) do
+  def candidate(:info, :election_timeout, state) do
     Logger.info("Candidate #{inspect(Node.self())} election timeout")
     # Become candidate
     state = become_candidate(state)
 
-    {:noreply, state}
+    {:keep_state, state}
   end
 
   # FOLLOWER STATES
@@ -177,7 +153,7 @@ defmodule Miruvor.Raft do
     {:ok, state}
   end
 
-  def follower({sender, :append_entries_req, msg}, state) do
+  def follower(:cast, {sender, :append_entries_req, msg}, state) do
     Logger.debug(
       "Follower #{inspect(Node.self())} received append_entries_req: #{inspect(msg)} from #{inspect(sender)}"
     )
@@ -201,7 +177,7 @@ defmodule Miruvor.Raft do
         )
 
       RaftUtils.send_to(sender, :append_entries_resp, response)
-      {:ok, state}
+      {:keep_state, state}
     else
       if RaftUtils.get_log_entry(state, prev_log_index) != :noentry &&
            RaftUtils.get_log_entry(state, prev_log_index).term != prev_log_term do
@@ -213,7 +189,7 @@ defmodule Miruvor.Raft do
           )
 
         RaftUtils.send_to(sender, :append_entries_resp, response)
-        {:ok, state}
+        {:keep_state, state}
       else
         state = RaftUtils.reset_election_timer(state)
 
@@ -221,7 +197,13 @@ defmodule Miruvor.Raft do
         state = RaftUtils.set_view(state, conflict)
         state = RaftUtils.append_log_entries(state, entries)
         Logger.warn("Log after append: #{inspect(state.log)}")
-        {_, state} = RaftUtils.commit_log_index(state, RaftUtils.get_last_log_index(state))
+
+        {_, state} =
+          if leader_commit_index > state.commit_index do
+            RaftUtils.commit_log_index(state, RaftUtils.get_last_log_index(state))
+          else
+            {:ok, state}
+          end
 
         state =
           if leader_commit_index > state.commit_index do
@@ -238,7 +220,7 @@ defmodule Miruvor.Raft do
           )
 
         RaftUtils.send_to(sender, :append_entries_resp, response)
-        {:ok, state}
+        {:keep_state, state}
       end
 
       # new_state = state
@@ -246,7 +228,7 @@ defmodule Miruvor.Raft do
     end
   end
 
-  def follower({sender, :request_vote_req, msg}, state) do
+  def follower(:cast, {sender, :request_vote_req, msg}, state) do
     Logger.info(
       "Follower #{inspect(Node.self())} received request_vote: #{inspect(msg)} from #{inspect(sender)}"
     )
@@ -262,7 +244,7 @@ defmodule Miruvor.Raft do
       term < state.current_term ->
         response = Miruvor.RequestVoteResponse.new(state.current_term, false)
         RaftUtils.send_to(sender, :request_vote_resp, response)
-        {:ok, state}
+        {:keep_state, state}
 
       RaftUtils.get_last_log_term(state) >= last_log_term &&
         RaftUtils.get_last_log_index(state) >= last_log_index &&
@@ -273,12 +255,12 @@ defmodule Miruvor.Raft do
         state = %{state | current_term: term}
         response = Miruvor.RequestVoteResponse.new(state.current_term, true)
         RaftUtils.send_to(sender, :request_vote_resp, response)
-        {:ok, state}
+        {:keep_state, state}
 
       true ->
         response = Miruvor.RequestVoteResponse.new(state.current_term, false)
         RaftUtils.send_to(sender, :request_vote_resp, response)
-        {:ok, state}
+        {:keep_state, state}
     end
   end
 
@@ -290,28 +272,28 @@ defmodule Miruvor.Raft do
     {:ok, state}
   end
 
-  def follower({:get, {conn, item} = _msg}, state) do
+  def follower({:call, from}, {:get, {item} = _msg}, state) do
     Logger.info("Follower #{inspect(Node.self())} received get: #{inspect(item)}")
-    RaftUtils.send_to(state.current_leader, :get, {conn, item})
-    {:ok, state}
+    resp = RaftUtils.send_to_reply(state.current_leader, :get, {from, item})
+    {:keep_state, state}
   end
 
-  def follower({:post, {conn, key, item} = _msg}, state) do
+  def follower({:call, from}, {:write, {key, item} = _msg}, state) do
     Logger.info("Follower #{inspect(Node.self())} received put: #{inspect(item)}")
-    RaftUtils.send_to(state.current_leader, :post, {conn, key, item})
-    {:ok, state}
+    resp = RaftUtils.send_to(state.current_leader, :write, {from, key, item})
+    {:keep_state, state}
   end
 
   ## LEADER STATES
 
-  def leader({:get, {conn, item} = _msg}, state) do
+  def leader({:call, from}, {:read, item}, state) do
     Logger.info("Leader #{inspect(Node.self())} received get: #{inspect(item)}")
 
     entry =
       Miruvor.LogEntry.get(
         RaftUtils.get_last_log_index(state) + 1,
         state.current_term,
-        conn,
+        from,
         item
       )
 
@@ -335,17 +317,17 @@ defmodule Miruvor.Raft do
       )
     )
 
-    {:ok, state}
+    {:keep_state, state}
   end
 
-  def leader({:post, {conn, key, item} = _msg}, state) do
+  def leader({:call, from}, {:write, {key, item}}, state) do
     Logger.info("Leader #{inspect(Node.self())} received post: #{inspect(item)}")
 
     entry =
       Miruvor.LogEntry.put(
         RaftUtils.get_last_log_index(state) + 1,
         state.current_term,
-        conn,
+        from,
         key,
         item
       )
@@ -369,10 +351,10 @@ defmodule Miruvor.Raft do
       )
     )
 
-    {:ok, state}
+    {:keep_state, state}
   end
 
-  def leader({sender, :append_entries_resp, msg}, state) do
+  def leader(:cast, {sender, :append_entries_resp, msg}, state) do
     Logger.info("Leader #{inspect(Node.self())} received append_entries_resp: #{inspect(msg)}")
 
     %Miruvor.AppendEntryResponse{
@@ -385,44 +367,72 @@ defmodule Miruvor.Raft do
       state = RaftUtils.set_next_index(state, sender, log_index + 1)
       state = RaftUtils.set_match_index(state, sender, log_index)
 
+      values =
+        state.match_index
+        |> Enum.map(fn {_, v} -> v end)
+        |> Enum.sort(&>=/2)
+
       state = RaftUtils.get_view(state)
 
-      commit_index =
-        state.commit_index
-        |> Stream.iterate(&(&1 + 1))
-        |> Enum.find_value(fn index ->
-          ## including me
-          count = Enum.count(state.match_index, fn {_, mi} -> mi >= index end) + 1
-          count <= state.view |> length() |> div(2) && index
-        end)
-        |> (&(&1 - 1)).()
+      {commit_index, _} =
+        values
+        |> Enum.map(fn v -> {v, Enum.count(values, &(&1 >= v))} end)
+        |> Enum.find(fn {_, count} -> count >= Enum.count(state.view) / 2 end)
 
       if commit_index > state.commit_index do
         {{requester, {:ok, value}}, state} = RaftUtils.commit_log_index(state, commit_index)
         state = %{state | commit_index: commit_index}
 
         Logger.warn("Sending response to requester...")
-        send_resp(requester, 200, value)
+        GenStateMachine.reply(requester, {:ok, value})
 
-        {:ok, state}
+        {:keep_state, state}
       else
-        {:ok, state}
+        {:keep_state, state}
       end
     else
       if term > state.current_term do
         # step down to follower
         state = RaftUtils.set_current_term(state, term)
         state = become_follower(state)
-        {:ok, state}
+        {:next_state, :follower, state}
       else
         state = %{
           state
           | next_index: Map.update!(state.next_index, sender, &(&1 - 1))
         }
 
-        {:ok, state}
+        {:keep_state, state}
       end
     end
+  end
+
+  def leader(:cast, {sender, :append_entries_req, msg}, state) do
+    Logger.info("Leader #{inspect(Node.self())} received append_entries_req: #{inspect(msg)}")
+
+    %Miruvor.AppendEntryRequest{
+      term: term,
+      leader_id: leader_id,
+      prev_log_index: prev_log_index,
+      prev_log_term: prev_log_term,
+      entries: entries,
+      leader_commit_index: leader_commit
+    } = msg
+
+    if term < state.current_term do
+      Logger.info("Leader #{inspect(Node.self())} received append_entries_req with term < current_term")
+      RaftUtils.send_to_reply(sender, :append_entries_resp, Miruvor.AppendEntryResponse.new(state.current_term, RaftUtils.get_last_log_index(state), false)) # TODO: check index matters
+      {:keep_state, state}
+    else
+        state = become_follower(state)
+        {:next_state, :follower, state}
+    end
+  end
+
+  def leader(:cast, {sender, :request_vote_resp, msg}, state) do
+    Logger.info("Leader #{inspect(Node.self())} received request_vote_resp: #{inspect(msg)}")
+
+    {:keep_state, state}
   end
 
   def leader(msg, state) do
@@ -434,7 +444,7 @@ defmodule Miruvor.Raft do
 
   ## CANDIDATE STATES
 
-  def candidate({sender, :request_vote_resp, msg}, state) do
+  def candidate(:cast, {sender, :request_vote_resp, msg}, state) do
     Logger.info("Candidate #{inspect(Node.self())} received request_vote_resp: #{inspect(msg)}")
 
     %Miruvor.RequestVoteResponse{
@@ -453,18 +463,18 @@ defmodule Miruvor.Raft do
       term > state.current_term ->
         state = RaftUtils.set_current_term(state, term)
         state = become_follower(state)
-        {:ok, state}
+        {:next_state, :follower, state}
 
       RaftUtils.has_majority?(state) ->
         state = become_leader(state)
-        {:ok, state}
+        {:next_state, :leader, state}
 
       true ->
-        {:ok, state}
+        {:keep_state, state}
     end
   end
 
-  def candidate({sender, :request_vote_req, msg}, state) do
+  def candidate(:cast, {sender, :request_vote_req, msg}, state) do
     Logger.info("Candidate #{inspect(Node.self())} received request_vote_req: #{inspect(msg)}")
 
     %Miruvor.RequestVoteRequest{
@@ -483,16 +493,16 @@ defmodule Miruvor.Raft do
 
         RaftUtils.send_to(sender, :request_vote_resp, response)
         state = become_follower(state)
-        {:ok, state}
+        {:next_state, :follower, state}
 
       true ->
         response = Miruvor.RequestVoteResponse.new(state.current_term, false)
         RaftUtils.send_to(sender, :request_vote_resp, response)
-        {:ok, state}
+        {:keep_state, state}
     end
   end
 
-  def candidate({sender, :append_entries_req, msg}, state) do
+  def candidate(:cast, {sender, :append_entries_req, msg}, state) do
     Logger.info("Candidate #{inspect(Node.self())} received append_entries_req: #{inspect(msg)}")
 
     %Miruvor.AppendEntryRequest{
@@ -507,9 +517,9 @@ defmodule Miruvor.Raft do
     if term > state.current_term do
       state = RaftUtils.set_current_term(state, term)
       state = become_follower(state)
-      {:ok, state}
+      {:next_state, :follower, state}
     else
-      {:ok, state}
+      {:keep_state, state}
     end
   end
 

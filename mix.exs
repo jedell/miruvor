@@ -20,6 +20,7 @@ defmodule Miruvor.MixProject do
   def application do
     [
       mod: {Miruvor.Application, []},
+      applications: [:gen_state_machine, :phoenix, :phoenix_pubsub, :cowboy],
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -41,6 +42,7 @@ defmodule Miruvor.MixProject do
       {:libcluster, "~> 3.3"},
       {:rocksdb, "~> 1.8"},
       {:poison, "~> 5.0"},
+      {:gen_state_machine, "~> 3.0"}
     ]
   end
 

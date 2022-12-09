@@ -36,8 +36,9 @@ defmodule Miruvor.Application do
       # {Miruvor.Worker, arg}
       # Start RockDB Storage
       {Miruvor.Storage, [{:node, Node.self()}]},
-      # Start Raft
+      # # Start Raft
       {Miruvor.Raft, [{:node, Node.self(), :is_leader, leader}]}
+      # {Miruvor.Servertest, [{:node, Node.self(), :is_leader, leader}]}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
