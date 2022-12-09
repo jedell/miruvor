@@ -75,7 +75,6 @@ defmodule Miruvor.Raft do
 
   @spec handle_call(any, any, any) :: {:reply, any, any}
   def handle_call(msg, _from, %{state: :follower} = state) do
-    Logger.info("Follower #{inspect(Node.self())} received call")
     # Handle msg, return reply and new state
     {:ok, new_state} = follower(msg, state)
     # {:reply, item, new_state}
@@ -112,7 +111,6 @@ defmodule Miruvor.Raft do
   # LEADER HANDLERS
 
   def handle_call(msg, _from, %{state: :leader} = state) do
-    Logger.info("Leader #{inspect(Node.self())} received call")
     # Handle msg, return reply and new state
     {:ok, new_state} = leader(msg, state)
     # {:reply, item, new_state}
@@ -150,7 +148,6 @@ defmodule Miruvor.Raft do
   # CANDIDATE HANDLERS
 
   def handle_call(msg, _from, %{state: :candidate} = state) do
-    Logger.info("Candidate #{inspect(Node.self())} received call")
     # Handle msg, return reply and new state
     {:ok, new_state} = candidate(msg, state)
     # {:reply, item, new_state}
@@ -203,8 +200,20 @@ defmodule Miruvor.Raft do
       RaftUtils.send_to(sender, :append_entries_resp, response)
       {:ok, state}
     else
-      if RaftUtils.get_log_entry(state, prev_log_index) != :noentry &&
-           RaftUtils.get_log_entry(state, prev_log_index).term != prev_log_term do
+      state = RaftUtils.reset_election_timer(state)
+      state = RaftUtils.set_current_term(state, term)
+
+      if !RaftUtils.consistent?(state, prev_log_index, prev_log_term) do
+        last_index = RaftUtils.get_last_log_index(state)
+
+        state =
+          if last_index >= prev_log_index do
+            # clear logs from prev_log_index to last index
+            RaftUtils.clear_log_entries(state, prev_log_index, last_index)
+          else
+            state
+          end
+
         response =
           Miruvor.AppendEntryResponse.new(
             state.current_term,
@@ -215,20 +224,9 @@ defmodule Miruvor.Raft do
         RaftUtils.send_to(sender, :append_entries_resp, response)
         {:ok, state}
       else
-        state = RaftUtils.reset_election_timer(state)
-
-        conflict = RaftUtils.get_conflict(state, entries)
-        state = RaftUtils.set_view(state, conflict)
         state = RaftUtils.append_log_entries(state, entries)
-        Logger.warn("Log after append: #{inspect(state.log)}")
-        {_, state} = RaftUtils.commit_log_index(state, RaftUtils.get_last_log_index(state))
-
-        state =
-          if leader_commit_index > state.commit_index do
-            %{state | commit_index: min(leader_commit_index, RaftUtils.get_last_log_index(state))}
-          else
-            state
-          end
+        {_, state} = RaftUtils.commit_log_index(state, min(leader_commit_index, RaftUtils.get_last_log_index(state)))
+        state = RaftUtils.update_leader(state, leader_id)
 
         response =
           Miruvor.AppendEntryResponse.new(

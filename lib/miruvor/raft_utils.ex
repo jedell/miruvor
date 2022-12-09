@@ -162,6 +162,15 @@ defmodule Miruvor.RaftUtils do
     Enum.at(raft.log, 0, Miruvor.LogEntry.empty()).term
   end
 
+  def clear_log_entries(raft, from, to) do
+    # delete all logs in range inclusively
+    new_log = Enum.filter(raft.log, fn entry ->
+      entry.index < from || entry.index > to
+    end)
+
+    %{raft | log: new_log}
+  end
+
   def set_current_term(raft, term) do
     %{raft | current_term: term}
   end
@@ -266,6 +275,18 @@ defmodule Miruvor.RaftUtils do
     }
 
     {raft, response}
+
+  end
+
+  def consistent?(raft, prev_log_index, prev_log_term) do
+    if prev_log_index == 0 && prev_log_term == 0 do
+      true
+    else
+      case get_log_entry(raft, prev_log_index) do
+        :noentry -> false
+        log_entry -> log_entry.term == prev_log_term
+      end
+    end
 
   end
 

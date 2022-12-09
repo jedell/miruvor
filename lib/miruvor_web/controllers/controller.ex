@@ -27,7 +27,7 @@ defmodule MiruvorWeb.Controller do
   def post(conn, _params) do
     resp = GenServer.call(Miruvor.Raft, {:post, {conn, "test", "nice!"}})
 
-    # send_resp(conn, 200, inspect(resp))
+    send_resp(conn, 200, inspect(resp))
   end
 
   def put(conn, _params) do
