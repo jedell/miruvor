@@ -212,7 +212,8 @@ defmodule Miruvor.Raft do
 
         {_, state} =
           if leader_commit_index > state.commit_index do
-            RaftUtils.commit_log_index(state, RaftUtils.get_last_log_index(state))
+            # RaftUtils.commit_log_index(state, RaftUtils.get_last_log_index(state))
+            {:ok, state}
           else
             {:ok, state}
           end
@@ -392,7 +393,9 @@ defmodule Miruvor.Raft do
         |> Enum.find(fn {_, count} -> count >= Enum.count(state.view) / 2 end)
 
       if commit_index > state.commit_index do
-        {{requester, {:ok, value}}, state} = RaftUtils.commit_log_index(state, commit_index)
+        resp = RaftUtils.commit_log_index(state, commit_index)
+        Logger.warn("resp: #{inspect(resp)}")
+        {{requester, {:ok, value}}, state} = resp
         state = %{state | commit_index: commit_index}
 
         Logger.warn("Sending response to requester...")

@@ -72,6 +72,51 @@ defmodule Miruvor.RaftUtils do
     end
   end
 
+  def commit_log_entry_shard(raft, log_entry) do
+    Logger.warn("is_leader: #{inspect(raft.is_leader)}")
+
+    if raft.is_leader == true do
+      shards = Miruvor.Storage.get_shards()
+
+      case log_entry do
+        %Miruvor.LogEntry{operation: :nop} ->
+          Logger.debug("Committing nop entry")
+          {{log_entry.requester, {:ok, :ok}}, raft}
+
+        %Miruvor.LogEntry{operation: :get, arguments: key} ->
+          Logger.debug("Committing get entry")
+          shard_id = Miruvor.Shard.get_shard_id(shards, key)
+          to_node = Miruvor.Shard.get_node(shards, shard_id)
+          {:ok, value} = :rpc.call(to_node, Miruvor.Storage, :get, [key])
+          {{log_entry.requester, {:ok, value}}, raft}
+
+        %Miruvor.LogEntry{operation: :put, arguments: {key, value}} ->
+          Logger.debug("Committing put entry")
+          shard_id = Miruvor.Shard.get_shard_id(shards, key)
+          to_node = Miruvor.Shard.get_node(shards, shard_id)
+          {:ok, value} = :rpc.call(to_node, Miruvor.Storage, :put, [key, value])
+          Logger.warn("put value: #{inspect(value)}")
+          {{log_entry.requester, {:ok, value}}, raft}
+
+        %Miruvor.LogEntry{operation: :delete, arguments: key} ->
+          Logger.debug("Committing delete entry")
+          {:ok, value} = Miruvor.Storage.delete(key)
+          {{log_entry.requester, {:ok, value}}, raft}
+          {:ok, raft}
+
+        nil ->
+          Logger.debug("Heartbeat received")
+          {:ok, raft}
+
+        _ ->
+          Logger.debug("Committing unknown entry")
+          {:error, raft}
+      end
+    else
+      {:ok, raft}
+    end
+  end
+
   @spec commit_log_index(%Miruvor.Raft{}, integer()) ::
           {:noentry | {atom(), {:ok, any()} | {:error, :not_found | any()}}, %Miruvor.Raft{}}
   @doc """
@@ -87,7 +132,7 @@ defmodule Miruvor.RaftUtils do
         "Committing log entry at index #{index} #{length(raft.log)} (correct index #{correct_idx})"
       )
 
-      commit_log_entry(raft, Enum.at(raft.log, correct_idx))
+      commit_log_entry_shard(raft, Enum.at(raft.log, correct_idx))
     end
   end
 
@@ -388,5 +433,4 @@ defmodule Miruvor.RaftUtils do
     Logger.info("Redirecting #{message} to leader #{inspect(leader)}")
     GenStateMachine.call({Miruvor.Raft, leader}, {message, payload})
   end
-
 end
