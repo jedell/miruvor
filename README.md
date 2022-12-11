@@ -8,10 +8,13 @@ This repository contains an implementation of a distributed key-value store in E
 - Uses the Raft consensus protocol to ensure data consistency and availability
 - Implements the GenStateMachine library for managing the state of the key-value store
 - Built using the Phoenix Framework for fast and scalable performance
+- Shards
+    - Hash-based sharding for nodes.
+    - We assign keys to differnt shards via a hash function. ([phash2](http://erlang.org/documentation/doc-7.0/erts-7.0/doc/html/erlang.html#phash2-2)) 
+    - Nodes are assigned a specific shard ID. When a request comes in and log replication occurs, only the node with a matching shard ID to the key hash commits and responds to the client
 
 ## Planned Features
 
-- Shards
 - Deployment to Cloud
 
 ## Design Choices
