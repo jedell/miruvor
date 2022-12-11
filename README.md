@@ -17,6 +17,11 @@ This repository contains an implementation of a distributed key-value store in E
 
 - Deployment to Cloud
 
+## Known Issues
+
+- Making concurrent requests to different nodes stalls system replies
+- Poor performance on multiple concurrent requests
+
 ## Design Choices
 
 In designing this distributed key-value store, several important choices were made with the goal of achieving high performance and reliability.
