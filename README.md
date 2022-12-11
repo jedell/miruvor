@@ -25,3 +25,24 @@ Another important design choice was to use the Raft consensus protocol for manag
 To further improve performance and reliability, it was decided to implement the key-value store using the GenStateMachine and Phoenix Framework libraries. GenStateMachine is a powerful Elixir library that allows developers to easily implement state machines, which are useful for managing the state of complex systems like a distributed key-value store. Phoenix Framework is a high-performance web framework that provides a fast and scalable platform for building web applications in Elixir.
 
 Finally, the decision was made to keep the logs for the key-value store in memory for increased performance. This allows the system to quickly access and update the logs without having to read from and write to disk, which can be slower and more resource-intensive. This design choice ensures that the key-value store can operate at high speeds and handle large volumes of data without sacrificing performance.
+
+
+## Results 
+
+### 100 Requests
+
+Total time: 2.9022717475891113
+Average time: 0.029022717475891115
+Throughput: 34.45576730816782
+
+### 500 Requests
+
+Total time: 15.3664710521698
+Average time: 0.0307329421043396
+Throughput: 32.53837516125072
+
+### 1000 Requests
+
+Total time: 31.927751541137695
+Average time: 0.031927751541137694
+Throughput: 31.320714792945502
