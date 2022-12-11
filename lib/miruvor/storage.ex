@@ -60,13 +60,13 @@ defmodule Miruvor.Storage do
   def handle_call({:get, key}, _from, {db_handle, shards}) do
     case RocksDB.get(db_handle, key) do
       {:ok, value} ->
-        {:reply, {:ok, value}, db_handle}
+        {:reply, {:ok, value}, {db_handle, shards}}
 
       {:error, :not_found} ->
-        {:reply, {:error, :not_found}, db_handle}
+        {:reply, {:error, :not_found}, {db_handle, shards}}
 
       {:error, reason} ->
-        {:reply, {:error, reason}, db_handle}
+        {:reply, {:error, reason}, {db_handle, shards}}
     end
   end
 
