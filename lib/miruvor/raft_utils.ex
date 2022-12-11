@@ -95,7 +95,7 @@ defmodule Miruvor.RaftUtils do
           shard_id = Miruvor.Shard.get_shard_id(shards, key)
           to_node = Miruvor.Shard.get_node(shards, shard_id)
           {:ok, value} = :rpc.call(to_node, Miruvor.Storage, :put, [key, value])
-          Logger.warn("put value: #{inspect(value)}")
+          Logger.warn("put value: #{inspect(value)} in #{inspect(to_node)}")
           {{log_entry.requester, {:ok, value}}, raft}
 
         %Miruvor.LogEntry{operation: :delete, arguments: key} ->
