@@ -117,6 +117,46 @@ defmodule Miruvor.RaftUtils do
     end
   end
 
+  def get_key_from_entry(log_entry) do
+    case log_entry do
+      %Miruvor.LogEntry{operation: :nop} ->
+        Logger.debug("Committing nop entry")
+        nil
+
+      %Miruvor.LogEntry{operation: :get, arguments: key} ->
+        Logger.debug("Committing get entry")
+        key
+
+      %Miruvor.LogEntry{operation: :put, arguments: {key, value}} ->
+        Logger.debug("Committing put entry")
+        key
+
+      %Miruvor.LogEntry{operation: :delete, arguments: key} ->
+        Logger.debug("Committing delete entry")
+        key
+
+      nil ->
+        Logger.debug("Heartbeat received")
+        nil
+
+      _ ->
+        Logger.debug("Committing unknown entry")
+        nil
+    end
+  end
+
+  def can_respond?(state) do
+    entry = get_log_entry(state, get_last_log_index(state))
+    key = get_key_from_entry(entry)
+    shards = Miruvor.Storage.get_shards()
+    shard_id = Miruvor.Shard.get_shard_id(shards, key)
+    to_node = Miruvor.Shard.get_node(shards, shard_id)
+
+    # requester = entry.requester
+
+    {to_node == Node.self(), entry}
+  end
+
   @spec commit_log_index(%Miruvor.Raft{}, integer()) ::
           {:noentry | {atom(), {:ok, any()} | {:error, :not_found | any()}}, %Miruvor.Raft{}}
   @doc """
@@ -132,7 +172,7 @@ defmodule Miruvor.RaftUtils do
         "Committing log entry at index #{index} #{length(raft.log)} (correct index #{correct_idx})"
       )
 
-      commit_log_entry_shard(raft, Enum.at(raft.log, correct_idx))
+      commit_log_entry(raft, Enum.at(raft.log, correct_idx))
     end
   end
 

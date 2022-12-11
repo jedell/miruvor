@@ -212,8 +212,16 @@ defmodule Miruvor.Raft do
 
         {_, state} =
           if leader_commit_index > state.commit_index do
+            case RaftUtils.can_respond?(state) do
+              {true, entry} ->
+                {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry(state, entry)
+                GenStateMachine.reply(requester, {:ok, value})
+                {:ok, state}
+              _ ->
+                {:ok, state}
+            end
             # RaftUtils.commit_log_index(state, RaftUtils.get_last_log_index(state))
-            {:ok, state}
+            # {:ok, state}
           else
             {:ok, state}
           end
@@ -393,13 +401,21 @@ defmodule Miruvor.Raft do
         |> Enum.find(fn {_, count} -> count >= Enum.count(state.view) / 2 end)
 
       if commit_index > state.commit_index do
-        resp = RaftUtils.commit_log_index(state, commit_index)
-        Logger.warn("resp: #{inspect(resp)}")
-        {{requester, {:ok, value}}, state} = resp
+        # resp = RaftUtils.commit_log_index(state, commit_index)
+        # Logger.warn("resp: #{inspect(resp)}")
+        # {{requester, {:ok, value}}, state} = resp
+        case RaftUtils.can_respond?(state) do
+          {true, entry} ->
+            {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry(state, entry)
+            GenStateMachine.reply(requester, {:ok, value})
+            {:ok, state}
+          _ ->
+            {:ok, state}
+        end
         state = %{state | commit_index: commit_index}
 
         Logger.warn("Sending response to requester...")
-        GenStateMachine.reply(requester, {:ok, value})
+        # GenStateMachine.reply(requester, {:ok, value})
 
         {:keep_state, state}
       else
