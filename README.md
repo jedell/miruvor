@@ -27,7 +27,7 @@ To further improve performance and reliability, it was decided to implement the 
 Finally, the decision was made to keep the logs for the key-value store in memory for increased performance. This allows the system to quickly access and update the logs without having to read from and write to disk, which can be slower and more resource-intensive. This design choice ensures that the key-value store can operate at high speeds and handle large volumes of data without sacrificing performance.
 
 
-## Results (Localhost)
+## Results
 
 ### 100 Requests
 
