@@ -152,6 +152,13 @@ defmodule Miruvor.RaftUtils do
     shard_id = Miruvor.Shard.get_shard_id(shards, key)
     to_node = Miruvor.Shard.get_node(shards, shard_id)
 
+    if (to_node == Node.self()) do
+      Logger.warn("can_respond? Shard: #{inspect(shard_id)} to_node: #{inspect(to_node)}")
+    else
+      Logger.warn("can_not_respond? Shard: #{inspect(shard_id)} to_node: #{inspect(to_node)}")
+    end
+
+
     # requester = entry.requester
 
     {to_node == Node.self(), entry}

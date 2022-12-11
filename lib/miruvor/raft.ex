@@ -208,18 +208,21 @@ defmodule Miruvor.Raft do
         conflict = RaftUtils.get_conflict(state, entries)
         state = RaftUtils.set_view(state, conflict)
         state = RaftUtils.append_log_entries(state, entries)
-        Logger.warn("Log after append: #{inspect(state.log)}")
+        # Logger.warn("Log after append: #{inspect(state.log)}")
 
         {_, state} =
           if leader_commit_index > state.commit_index do
             case RaftUtils.can_respond?(state) do
               {true, entry} ->
                 {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry(state, entry)
-                GenStateMachine.reply(requester, {:ok, value})
+                # Logger.warn("Sending response to requester...")
+                # GenStateMachine.reply(requester, {:ok, value})
                 {:ok, state}
+
               _ ->
                 {:ok, state}
             end
+
             # RaftUtils.commit_log_index(state, RaftUtils.get_last_log_index(state))
             # {:ok, state}
           else
@@ -407,14 +410,27 @@ defmodule Miruvor.Raft do
         case RaftUtils.can_respond?(state) do
           {true, entry} ->
             {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry(state, entry)
+            Logger.warn("Sending response to requester...")
             GenStateMachine.reply(requester, {:ok, value})
-            {:ok, state}
-          _ ->
-            {:ok, state}
+            {:keep_state, state}
+
+          {false, entry} ->
+            if entry.operation == :put do
+              Logger.info("Write request, can reply and commit on correct shard")
+              Logger.warn("Sending response to requester...")
+              GenStateMachine.reply(entry.requester, {:ok, RaftUtils.get_key_from_entry(entry)})
+              {:keep_state, state}
+            else
+              Logger.info("Read request, must commit")
+              {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry(state, entry)
+              Logger.warn("Sending response to requester...")
+              GenStateMachine.reply(requester, {:ok, value})
+              {:keep_state, state}
+            end
         end
+
         state = %{state | commit_index: commit_index}
 
-        Logger.warn("Sending response to requester...")
         # GenStateMachine.reply(requester, {:ok, value})
 
         {:keep_state, state}
@@ -451,12 +467,25 @@ defmodule Miruvor.Raft do
     } = msg
 
     if term < state.current_term do
-      Logger.info("Leader #{inspect(Node.self())} received append_entries_req with term < current_term")
-      RaftUtils.send_to_reply(sender, :append_entries_resp, Miruvor.AppendEntryResponse.new(state.current_term, RaftUtils.get_last_log_index(state), false)) # TODO: check index matters
+      Logger.info(
+        "Leader #{inspect(Node.self())} received append_entries_req with term < current_term"
+      )
+
+      # TODO: check index matters
+      RaftUtils.send_to_reply(
+        sender,
+        :append_entries_resp,
+        Miruvor.AppendEntryResponse.new(
+          state.current_term,
+          RaftUtils.get_last_log_index(state),
+          false
+        )
+      )
+
       {:keep_state, state}
     else
-        state = become_follower(state)
-        {:next_state, :follower, state}
+      state = become_follower(state)
+      {:next_state, :follower, state}
     end
   end
 
