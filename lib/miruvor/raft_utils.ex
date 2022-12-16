@@ -87,7 +87,7 @@ defmodule Miruvor.RaftUtils do
           Logger.debug("Committing get entry")
           shard_id = Miruvor.Shard.get_shard_id(shards, key)
           to_node = Miruvor.Shard.get_node(shards, shard_id)
-          {:ok, value} = :rpc.call(to_node, Miruvor.Storage, :get, [key])
+          {:ok, value} = GenServer.call({Miruvor.Storage, to_node}, {:get, key})
           {{log_entry.requester, {:ok, value}}, raft}
 
         %Miruvor.LogEntry{operation: :put, arguments: {key, value}} ->

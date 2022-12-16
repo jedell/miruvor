@@ -216,7 +216,7 @@ defmodule Miruvor.Raft do
               {true, entry} ->
                 if entry.operation == :put do
                   Logger.info("Commiting put on shard")
-                  {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry(state, entry)
+                  {{requester, {:ok, value}}, state} = RaftUtils.commit_log_entry(state, entry)
                 else
                   Logger.info("Not correct shard")
                   # Logger.info("Commiting get on shard and responding")
@@ -416,7 +416,7 @@ defmodule Miruvor.Raft do
         # {{requester, {:ok, value}}, state} = resp
         case RaftUtils.can_respond?(state) do
           {true, entry} ->
-            {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry(state, entry)
+            {{requester, {:ok, value}}, state} = RaftUtils.commit_log_entry(state, entry)
             Logger.warn("Sending response to requester...")
             GenStateMachine.reply(requester, {:ok, value})
             {:keep_state, state}
@@ -429,7 +429,7 @@ defmodule Miruvor.Raft do
               {:keep_state, state}
             else
               Logger.info("Read request, must request and commit on correct shard")
-              {{requester, {:ok, value}}, raft} = RaftUtils.commit_log_entry_shard(state, entry)
+              {{requester, {:ok, value}}, state} = RaftUtils.commit_log_entry_shard(state, entry)
               Logger.warn("Sending response to requester...")
               GenStateMachine.reply(requester, {:ok, value})
               {:keep_state, state}

@@ -19,6 +19,7 @@ def main():
     total_time = 0
     url = "127.0.0.1"
     # make x number of requests
+    print("Writing to database...")
     for i in range(x):
         # randomly assign port number
         port = 4001 # random.randint(4001, 4004)
@@ -26,7 +27,7 @@ def main():
         key = i
         value = i
         # make request
-        start = time.time()
+        # start = time.time()
         # make request and await response
         response = requests.post(f"http://{url}:{port}/write/{key}/{value}", data=None,
                                  headers=None,
@@ -39,11 +40,26 @@ def main():
             print(f"Response: {response.text}")
             sys.exit(1)
 
-        print(f"Response: {response.text}")
-
+        # end = time.time()
+        # calculate time it took to complete request
+        # total_time += end - start
+    for i in range(1,x):
+        # randomly assign port number
+        port = 4001
+        key = i
+        value = i
+        # make request
+        start = time.time()
+        # make request and await response
+        response = requests.get(f"http://{url}:{port}/read/{key}", data=None,
+                                 headers=None,
+                                 )
         end = time.time()
         # calculate time it took to complete request
         total_time += end - start
+        print(f"Response: {response.text}")
+
+    
     # calculate average time it takes to complete a request
     avg_time = total_time / x
     # calculate throughput
